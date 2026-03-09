@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Enum, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
 import enum
@@ -29,20 +30,17 @@ class Company(Base):
     __table_args__ = {"schema": "public"}
 
     id = Column(Integer, primary_key=True, index=True)
-
     company_name = Column(String, nullable=False)
-
     company_email = Column(String, unique=True, index=True, nullable=False)
-
     schema_name = Column(String, unique=True, nullable=False)
-
     status = Column(Enum(CompanyStatus), default=CompanyStatus.pending)
-
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    hr_accounts = relationship("HRAccount", back_populates="company")
 
 
 # ----------------------------
-# GLOBAL USERS TABLE
+# GLOBAL USERS TABLE (PUBLIC SCHEMA)
 # ----------------------------
 
 class User(Base):
@@ -50,20 +48,35 @@ class User(Base):
     __table_args__ = {"schema": "public"}
 
     id = Column(Integer, primary_key=True, index=True)
-
     email = Column(String, unique=True, index=True, nullable=False)
-
     password_hash = Column(String, nullable=False)
-
     role = Column(Enum(UserRole))
-
     schema_name = Column(String)
-
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    refresh_tokens = relationship("RefreshToken", back_populates="user")
 
 
 # ----------------------------
-# OTP VERIFICATION TABLE
+# HR ACCOUNTS (PUBLIC SCHEMA — linked to company via FK)
+# ----------------------------
+
+class HRAccount(Base):
+    __tablename__ = "hr_accounts"
+    __table_args__ = {"schema": "public"}
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("public.companies.id", ondelete="CASCADE"), nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    otp_verified = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    company = relationship("Company", back_populates="hr_accounts")
+
+
+# ----------------------------
+# OTP VERIFICATION (PUBLIC SCHEMA)
 # ----------------------------
 
 class OTPVerification(Base):
@@ -71,13 +84,26 @@ class OTPVerification(Base):
     __table_args__ = {"schema": "public"}
 
     id = Column(Integer, primary_key=True, index=True)
-
     email = Column(String, index=True)
-
     otp_code = Column(String)
-
     expires_at = Column(DateTime)
-
-    verified = Column(String, default="false")
-
+    verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ----------------------------
+# REFRESH TOKENS (PUBLIC SCHEMA) — NEW TABLE
+# ----------------------------
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    __table_args__ = {"schema": "public"}
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String, unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    revoked = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="refresh_tokens")
