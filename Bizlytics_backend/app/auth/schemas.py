@@ -19,13 +19,6 @@ class HRRegisterRequest(BaseModel):
     company_email: str = Field(..., min_length=5, max_length=255)
 
 
-# --- OTP Verification (Developer A) ---
-
-class OTPVerifyRequest(BaseModel):
-    email: str = Field(..., min_length=5, max_length=255)
-    otp: str = Field(..., min_length=6, max_length=6)
-
-
 # --- Login (Developer A) ---
 
 class LoginRequest(BaseModel):

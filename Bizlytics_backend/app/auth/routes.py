@@ -1,28 +1,26 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth.schemas import (
     HRRegisterRequest,
-    OTPVerifyRequest,
     LoginRequest,
     RefreshTokenRequest,
     TokenResponse,
     MessageResponse,
     UserResponse,
+    CompanyRegisterRequest,
 )
 from app.auth import service
 from app.auth.dependencies import get_current_user
-from app.auth.models import User
+from app.auth.models import User, UserRole, Company
 
 router = APIRouter()
 
 
 # ============================================
-# DEVELOPER B — Company Registration
+# Company Registration
 # ============================================
-
-from app.auth.schemas import CompanyRegisterRequest
 
 @router.post("/company/register", response_model=MessageResponse, status_code=201)
 def company_register(data: CompanyRegisterRequest, db: Session = Depends(get_db)):
@@ -31,23 +29,69 @@ def company_register(data: CompanyRegisterRequest, db: Session = Depends(get_db)
 
 
 # ============================================
-# DEVELOPER A — HR Registration & OTP
+# HR Registration
 # ============================================
 
 @router.post("/hr/register", response_model=MessageResponse, status_code=201)
 def hr_register(data: HRRegisterRequest, db: Session = Depends(get_db)):
-    """Register a new HR under a company. Sends OTP to email."""
+    """Register HR account (pending company approval)."""
     return service.register_hr(db, data)
 
 
-@router.post("/hr/verify-otp", response_model=MessageResponse)
-def hr_verify_otp(data: OTPVerifyRequest, db: Session = Depends(get_db)):
-    """Verify HR OTP and activate account."""
-    return service.verify_otp(db, data)
+# ============================================
+# Company HR Management (approve / reject)
+# ============================================
+
+def require_company(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency to enforce company role."""
+    if current_user.role != UserRole.company:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requires company privileges",
+        )
+    return current_user
+
+
+@router.get("/company/hr/pending")
+def list_pending_hrs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_company),
+):
+    """List pending HR registrations for this company."""
+    company = db.query(Company).filter(Company.company_email == current_user.email).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return service.get_pending_hrs(db, company.id)
+
+
+@router.post("/company/hr/{hr_id}/approve", response_model=MessageResponse)
+def approve_hr(
+    hr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_company),
+):
+    """Approve a pending HR registration."""
+    company = db.query(Company).filter(Company.company_email == current_user.email).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return service.approve_hr(db, company.id, hr_id)
+
+
+@router.post("/company/hr/{hr_id}/reject", response_model=MessageResponse)
+def reject_hr(
+    hr_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_company),
+):
+    """Reject a pending HR registration."""
+    company = db.query(Company).filter(Company.company_email == current_user.email).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    return service.reject_hr(db, company.id, hr_id)
 
 
 # ============================================
-# DEVELOPER A — Login, Refresh, Logout, Profile
+# Login, Refresh, Logout, Profile
 # ============================================
 
 @router.post("/login", response_model=TokenResponse)

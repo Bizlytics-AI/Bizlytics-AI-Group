@@ -1,15 +1,16 @@
 import re
+import logging
 from datetime import datetime, timedelta, timezone
+from typing import List
 
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.auth import repository as repo
-from app.auth.models import UserRole, HRAccount
+from app.auth.models import UserRole, HRAccount, HRStatus, Company
 from app.auth.schemas import (
     CompanyRegisterRequest,
     HRRegisterRequest,
-    OTPVerifyRequest,
     LoginRequest,
     RefreshTokenRequest,
     TokenResponse,
@@ -17,118 +18,142 @@ from app.auth.schemas import (
 )
 from app.core.security import hash_password, verify_password
 from app.core.jwt_handler import create_access_token, create_refresh_token, decode_token
-from app.core.otp_service import generate_otp, send_otp
-from app.core.config import OTP_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+from app.core.config import REFRESH_TOKEN_EXPIRE_DAYS
 from app.core.tenant import create_tenant_schema
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================
-# DEVELOPER A — HR Registration
+# HR Registration (pending company approval)
 # ============================================
 
 def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
     """
-    Register a new HR under a company.
-    Flow: verify company → check uniqueness → hash password → create user + HR → generate & send OTP
+    Register HR account with status=pending. Company must approve before HR can login.
     """
-    # Verify company exists
-    company = repo.get_company_by_email(db, data.company_email)
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Company not found with this email",
-        )
+    data.email = data.email.lower().strip()
+    data.company_email = data.company_email.lower().strip()
 
     # Check if HR email already registered
     existing_user = repo.get_user_by_email(db, data.email)
-    if existing_user:
+    existing_hr = db.query(HRAccount).filter(HRAccount.email == data.email).first()
+
+    if existing_user or existing_hr:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A user with this email already exists",
+            detail="An account with this email already exists.",
         )
 
-    # Hash password
-    hashed = hash_password(data.password)
+    # Verify company exists and is approved
+    company = repo.get_company_by_email(db, data.company_email)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found with this email.")
 
-    # Create user (role=hr, schema_name=company's schema)
-    repo.create_user(
-        db=db,
-        email=data.email,
-        password_hash=hashed,
-        role=UserRole.hr,
-        schema_name=company.schema_name,
+    from app.auth.models import CompanyStatus
+    if company.status != CompanyStatus.approved:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This company is not yet approved. Please contact the company admin.",
+        )
+
+    try:
+        hashed = hash_password(data.password)
+
+        # Create user record (role=hr)
+        repo.create_user(
+            db=db,
+            email=data.email,
+            password_hash=hashed,
+            role=UserRole.hr,
+            schema_name=company.schema_name,
+        )
+
+        # Create HR account (status=pending)
+        repo.create_hr_account(
+            db=db,
+            company_id=company.id,
+            email=data.email,
+            password_hash=hashed,
+        )
+
+        db.commit()
+        logger.info("HR registration request submitted: %s -> company %s", data.email, data.company_email)
+        return MessageResponse(
+            message="Registration submitted! Your account is pending company approval."
+        )
+
+    except Exception as e:
+        db.rollback()
+        if "unique constraint" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="An account with this email already exists.",
+            )
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+
+
+# ============================================
+# Company HR Management (approve / reject)
+# ============================================
+
+def get_pending_hrs(db: Session, company_id: int) -> List[dict]:
+    """Get all pending HR registrations for a company."""
+    hrs = (
+        db.query(HRAccount)
+        .filter(HRAccount.company_id == company_id, HRAccount.status == HRStatus.pending)
+        .all()
     )
-
-    # Create HR account
-    repo.create_hr_account(
-        db=db,
-        company_id=company.id,
-        email=data.email,
-        password_hash=hashed,
-    )
-
-    # Generate OTP, save, send
-    otp_code = generate_otp()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)
-    repo.save_otp(db=db, email=data.email, otp_code=otp_code, expires_at=expires_at)
-    send_otp(data.email, otp_code)
-
-    return MessageResponse(message="HR registered successfully. OTP sent to email for verification.")
+    return [
+        {
+            "id": hr.id,
+            "email": hr.email,
+            "status": hr.status.value,
+            "created_at": hr.created_at,
+        }
+        for hr in hrs
+    ]
 
 
-# ============================================
-# DEVELOPER A — OTP Verification
-# ============================================
+def approve_hr(db: Session, company_id: int, hr_id: int) -> MessageResponse:
+    """Approve a pending HR registration."""
+    hr = db.query(HRAccount).filter(HRAccount.id == hr_id, HRAccount.company_id == company_id).first()
+    if not hr:
+        raise HTTPException(status_code=404, detail="HR account not found")
 
-def verify_otp(db: Session, data: OTPVerifyRequest) -> MessageResponse:
-    """
-    Verify OTP code for HR account activation.
-    Flow: get latest OTP → validate → check expiry → mark verified → activate HR
-    """
-    otp_record = repo.get_latest_otp(db, data.email)
-    if not otp_record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No OTP found for this email. Please register first.",
-        )
+    if hr.status != HRStatus.pending:
+        raise HTTPException(status_code=400, detail=f"HR account is already {hr.status.value}")
 
-    if otp_record.otp_code != data.otp:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid OTP code",
-        )
+    hr.status = HRStatus.approved
+    db.commit()
+    logger.info("HR %s approved by company %s", hr.email, company_id)
+    return MessageResponse(message=f"HR '{hr.email}' has been approved. They can now login.")
 
-    now = datetime.now(timezone.utc)
-    otp_expiry = otp_record.expires_at
-    if otp_expiry.tzinfo is None:
-        otp_expiry = otp_expiry.replace(tzinfo=timezone.utc)
-    if otp_expiry < now:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OTP has expired. Please request a new one.",
-        )
 
-    if otp_record.verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OTP has already been used",
-        )
+def reject_hr(db: Session, company_id: int, hr_id: int) -> MessageResponse:
+    """Reject a pending HR registration."""
+    hr = db.query(HRAccount).filter(HRAccount.id == hr_id, HRAccount.company_id == company_id).first()
+    if not hr:
+        raise HTTPException(status_code=404, detail="HR account not found")
 
-    repo.mark_otp_verified(db, otp_record)
-    repo.activate_hr_account(db, data.email)
+    if hr.status != HRStatus.pending:
+        raise HTTPException(status_code=400, detail=f"HR account is already {hr.status.value}")
 
-    return MessageResponse(message="OTP verified. HR account is now active.")
+    hr.status = HRStatus.rejected
+    db.commit()
+    logger.info("HR %s rejected by company %s", hr.email, company_id)
+    return MessageResponse(message=f"HR '{hr.email}' has been rejected.")
 
 
 # ============================================
-# DEVELOPER A — Login
+# Login
 # ============================================
 
 def login_user(db: Session, data: LoginRequest) -> TokenResponse:
     """
     Authenticate user and return access + refresh tokens.
-    Flow: find user → verify password → check HR OTP → generate tokens → store refresh token
     """
+    data.email = data.email.lower().strip()
     user = repo.get_user_by_email(db, data.email)
     if not user:
         raise HTTPException(
@@ -142,16 +167,38 @@ def login_user(db: Session, data: LoginRequest) -> TokenResponse:
             detail="Invalid email or password",
         )
 
-    # If HR, check OTP verified
+    # If HR, check company approval status
     if user.role == UserRole.hr:
         hr_account = db.query(HRAccount).filter(HRAccount.email == user.email).first()
-        if hr_account and not hr_account.otp_verified:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="HR account not verified. Please verify OTP first.",
-            )
+        if hr_account:
+            if hr_account.status == HRStatus.pending:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your HR registration is pending company approval.",
+                )
+            elif hr_account.status == HRStatus.rejected:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your HR registration was rejected by the company.",
+                )
 
-    # Generate tokens (schema_name for multi-tenant routing)
+    # If Company, check if approved by Admin
+    if user.role == UserRole.company:
+        from app.auth.models import CompanyStatus
+        company = db.query(Company).filter(Company.company_email == user.email).first()
+        if company:
+            if company.status == CompanyStatus.pending:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your company registration is pending admin approval.",
+                )
+            elif company.status == CompanyStatus.rejected:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your company registration was rejected.",
+                )
+
+    # Generate tokens
     token_data = {
         "user_id": user.id,
         "role": user.role.value,
@@ -161,7 +208,6 @@ def login_user(db: Session, data: LoginRequest) -> TokenResponse:
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token(token_data)
 
-    # Store refresh token
     refresh_expires = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     repo.save_refresh_token(db=db, user_id=user.id, raw_token=refresh_token, expires_at=refresh_expires)
 
@@ -169,14 +215,11 @@ def login_user(db: Session, data: LoginRequest) -> TokenResponse:
 
 
 # ============================================
-# DEVELOPER A — Refresh Tokens
+# Refresh Tokens
 # ============================================
 
 def refresh_tokens(db: Session, data: RefreshTokenRequest) -> TokenResponse:
-    """
-    Issue new token pair using a valid refresh token.
-    Flow: decode → lookup → check revoked → revoke old → issue new → store
-    """
+    """Issue new token pair using a valid refresh token."""
     payload = decode_token(data.refresh_token)
     if payload.get("token_type") != "refresh":
         raise HTTPException(
@@ -215,7 +258,7 @@ def refresh_tokens(db: Session, data: RefreshTokenRequest) -> TokenResponse:
 
 
 # ============================================
-# DEVELOPER A — Logout
+# Logout
 # ============================================
 
 def logout_user(db: Session, user_id: int) -> MessageResponse:
@@ -225,15 +268,15 @@ def logout_user(db: Session, user_id: int) -> MessageResponse:
 
 
 # ============================================
-# DEVELOPER B — Company Registration
+# Company Registration
 # ============================================
 
 def register_company(db: Session, data: CompanyRegisterRequest) -> MessageResponse:
     """
     Register a new company. Creates tenant schema for multi-tenant isolation.
-    Flow: check uniqueness → generate schema_name → hash password → create company → create user → create schema
     """
-    # Check if company email already exists
+    data.company_email = data.company_email.lower().strip()
+
     existing = repo.get_company_by_email(db, data.company_email)
     if existing:
         raise HTTPException(
@@ -248,32 +291,31 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> MessageRespon
             detail="A user with this email already exists",
         )
 
-    # Generate tenant schema name: "ABC Pvt Ltd" → "company_abc_pvt_ltd"
     schema_name = "company_" + re.sub(r"[^a-z0-9]+", "_", data.company_name.lower()).strip("_")
-
-    # Hash password
     hashed = hash_password(data.password)
 
-    # Create company record (status=pending)
-    company = repo.create_company(
-        db=db,
-        company_name=data.company_name,
-        company_email=data.company_email,
-        schema_name=schema_name,
-    )
+    try:
+        repo.create_company(
+            db=db,
+            company_name=data.company_name,
+            company_email=data.company_email,
+            schema_name=schema_name,
+        )
 
-    # Create user record (role=company)
-    repo.create_user(
-        db=db,
-        email=data.company_email,
-        password_hash=hashed,
-        role=UserRole.company,
-        schema_name=schema_name,
-    )
+        repo.create_user(
+            db=db,
+            email=data.company_email,
+            password_hash=hashed,
+            role=UserRole.company,
+            schema_name=schema_name,
+        )
 
-    # Create tenant schema in PostgreSQL (multi-tenant)
-    create_tenant_schema(db, schema_name)
+        create_tenant_schema(db, schema_name)
 
-    return MessageResponse(
-        message=f"Company '{data.company_name}' registered successfully. Status: pending approval."
-    )
+        db.commit()
+        return MessageResponse(
+            message=f"Company '{data.company_name}' registered successfully. Status: pending approval."
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
