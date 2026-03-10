@@ -9,13 +9,13 @@ from app.auth.models import (
     User,
     UserRole,
     HRAccount,
-    OTPVerification,
+    HRStatus,
     RefreshToken,
 )
 
 
 # ============================================
-# Company Operations (Used by Developer B)
+# Company Operations
 # ============================================
 
 def get_company_by_email(db: Session, email: str) -> Company | None:
@@ -30,13 +30,11 @@ def create_company(db: Session, company_name: str, company_email: str, schema_na
         status=CompanyStatus.pending,
     )
     db.add(company)
-    db.commit()
-    db.refresh(company)
     return company
 
 
 # ============================================
-# User Operations (Used by Developer A)
+# User Operations
 # ============================================
 
 def get_user_by_email(db: Session, email: str) -> User | None:
@@ -51,13 +49,11 @@ def create_user(db: Session, email: str, password_hash: str, role: UserRole, sch
         schema_name=schema_name,
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
     return user
 
 
 # ============================================
-# HR Account Operations (Used by Developer A)
+# HR Account Operations
 # ============================================
 
 def create_hr_account(db: Session, company_id: int, email: str, password_hash: str) -> HRAccount:
@@ -65,54 +61,14 @@ def create_hr_account(db: Session, company_id: int, email: str, password_hash: s
         company_id=company_id,
         email=email,
         password_hash=password_hash,
-        otp_verified=False,
+        status=HRStatus.pending,
     )
     db.add(hr)
-    db.commit()
-    db.refresh(hr)
     return hr
 
 
-def activate_hr_account(db: Session, email: str) -> None:
-    hr = db.query(HRAccount).filter(HRAccount.email == email).first()
-    if hr:
-        hr.otp_verified = True
-        db.commit()
-
-
 # ============================================
-# OTP Operations (Used by Developer A)
-# ============================================
-
-def save_otp(db: Session, email: str, otp_code: str, expires_at: datetime) -> OTPVerification:
-    otp_record = OTPVerification(
-        email=email,
-        otp_code=otp_code,
-        expires_at=expires_at,
-        verified=False,
-    )
-    db.add(otp_record)
-    db.commit()
-    db.refresh(otp_record)
-    return otp_record
-
-
-def get_latest_otp(db: Session, email: str) -> OTPVerification | None:
-    return (
-        db.query(OTPVerification)
-        .filter(OTPVerification.email == email)
-        .order_by(OTPVerification.created_at.desc())
-        .first()
-    )
-
-
-def mark_otp_verified(db: Session, otp_record: OTPVerification) -> None:
-    otp_record.verified = True
-    db.commit()
-
-
-# ============================================
-# Refresh Token Operations (Used by Developer A)
+# Refresh Token Operations
 # ============================================
 
 def _hash_token(token: str) -> str:
