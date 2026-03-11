@@ -1,6 +1,5 @@
+from app.auth.models import HRAccount, User
 from app.database import SessionLocal
-from app.auth.models import User, HRAccount
-import json
 
 db = SessionLocal()
 users = db.query(User).all()
@@ -12,4 +11,6 @@ for u in users:
 
 print("\n--- HR ACCOUNTS ---")
 for h in hr_accounts:
-    print(f"ID: {h.id}, Email: {h.email}, Status: {h.status.value if h.status else 'N/A'}")
+    print(
+        f"ID: {h.id}, Email: {h.email}, Status: {h.status.value if h.status else 'N/A'}"
+    )

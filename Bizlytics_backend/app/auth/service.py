@@ -1,24 +1,24 @@
-import re
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import List
 
-from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.auth import repository as repo
-from app.auth.models import UserRole, HRAccount, HRStatus, Company
+from app.auth.models import Company, HRAccount, HRStatus, UserRole
 from app.auth.schemas import (
     CompanyRegisterRequest,
     HRRegisterRequest,
     LoginRequest,
+    MessageResponse,
     RefreshTokenRequest,
     TokenResponse,
-    MessageResponse,
 )
-from app.core.security import hash_password, verify_password
-from app.core.jwt_handler import create_access_token, create_refresh_token, decode_token
 from app.core.config import REFRESH_TOKEN_EXPIRE_DAYS
+from app.core.jwt_handler import create_access_token, create_refresh_token, decode_token
+from app.core.security import hash_password, verify_password
 from app.core.tenant import create_tenant_schema
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 # ============================================
 # HR Registration (pending company approval)
 # ============================================
+
 
 def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
     """
@@ -48,9 +49,12 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
     # Verify company exists and is approved
     company = repo.get_company_by_email(db, data.company_email)
     if not company:
-        raise HTTPException(status_code=404, detail="Company not found with this email.")
+        raise HTTPException(
+            status_code=404, detail="Company not found with this email."
+        )
 
     from app.auth.models import CompanyStatus
+
     if company.status != CompanyStatus.approved:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -78,7 +82,11 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
         )
 
         db.commit()
-        logger.info("HR registration request submitted: %s -> company %s", data.email, data.company_email)
+        logger.info(
+            "HR registration request submitted: %s -> company %s",
+            data.email,
+            data.company_email,
+        )
         return MessageResponse(
             message="Registration submitted! Your account is pending company approval."
         )
@@ -97,11 +105,14 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
 # Company HR Management (approve / reject)
 # ============================================
 
+
 def get_pending_hrs(db: Session, company_id: int) -> List[dict]:
     """Get all pending HR registrations for a company."""
     hrs = (
         db.query(HRAccount)
-        .filter(HRAccount.company_id == company_id, HRAccount.status == HRStatus.pending)
+        .filter(
+            HRAccount.company_id == company_id, HRAccount.status == HRStatus.pending
+        )
         .all()
     )
     return [
@@ -117,27 +128,41 @@ def get_pending_hrs(db: Session, company_id: int) -> List[dict]:
 
 def approve_hr(db: Session, company_id: int, hr_id: int) -> MessageResponse:
     """Approve a pending HR registration."""
-    hr = db.query(HRAccount).filter(HRAccount.id == hr_id, HRAccount.company_id == company_id).first()
+    hr = (
+        db.query(HRAccount)
+        .filter(HRAccount.id == hr_id, HRAccount.company_id == company_id)
+        .first()
+    )
     if not hr:
         raise HTTPException(status_code=404, detail="HR account not found")
 
     if hr.status != HRStatus.pending:
-        raise HTTPException(status_code=400, detail=f"HR account is already {hr.status.value}")
+        raise HTTPException(
+            status_code=400, detail=f"HR account is already {hr.status.value}"
+        )
 
     hr.status = HRStatus.approved
     db.commit()
     logger.info("HR %s approved by company %s", hr.email, company_id)
-    return MessageResponse(message=f"HR '{hr.email}' has been approved. They can now login.")
+    return MessageResponse(
+        message=f"HR '{hr.email}' has been approved. They can now login."
+    )
 
 
 def reject_hr(db: Session, company_id: int, hr_id: int) -> MessageResponse:
     """Reject a pending HR registration."""
-    hr = db.query(HRAccount).filter(HRAccount.id == hr_id, HRAccount.company_id == company_id).first()
+    hr = (
+        db.query(HRAccount)
+        .filter(HRAccount.id == hr_id, HRAccount.company_id == company_id)
+        .first()
+    )
     if not hr:
         raise HTTPException(status_code=404, detail="HR account not found")
 
     if hr.status != HRStatus.pending:
-        raise HTTPException(status_code=400, detail=f"HR account is already {hr.status.value}")
+        raise HTTPException(
+            status_code=400, detail=f"HR account is already {hr.status.value}"
+        )
 
     hr.status = HRStatus.rejected
     db.commit()
@@ -148,6 +173,7 @@ def reject_hr(db: Session, company_id: int, hr_id: int) -> MessageResponse:
 # ============================================
 # Login
 # ============================================
+
 
 def login_user(db: Session, data: LoginRequest) -> TokenResponse:
     """
@@ -185,6 +211,7 @@ def login_user(db: Session, data: LoginRequest) -> TokenResponse:
     # If Company, check if approved by Admin
     if user.role == UserRole.company:
         from app.auth.models import CompanyStatus
+
         company = db.query(Company).filter(Company.company_email == user.email).first()
         if company:
             if company.status == CompanyStatus.pending:
@@ -208,8 +235,12 @@ def login_user(db: Session, data: LoginRequest) -> TokenResponse:
     access_token = create_access_token(token_data)
     refresh_token = create_refresh_token(token_data)
 
-    refresh_expires = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    repo.save_refresh_token(db=db, user_id=user.id, raw_token=refresh_token, expires_at=refresh_expires)
+    refresh_expires = datetime.now(timezone.utc) + timedelta(
+        days=REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    repo.save_refresh_token(
+        db=db, user_id=user.id, raw_token=refresh_token, expires_at=refresh_expires
+    )
 
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
@@ -217,6 +248,7 @@ def login_user(db: Session, data: LoginRequest) -> TokenResponse:
 # ============================================
 # Refresh Tokens
 # ============================================
+
 
 def refresh_tokens(db: Session, data: RefreshTokenRequest) -> TokenResponse:
     """Issue new token pair using a valid refresh token."""
@@ -251,8 +283,15 @@ def refresh_tokens(db: Session, data: RefreshTokenRequest) -> TokenResponse:
     new_access = create_access_token(token_data)
     new_refresh = create_refresh_token(token_data)
 
-    refresh_expires = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    repo.save_refresh_token(db=db, user_id=payload["user_id"], raw_token=new_refresh, expires_at=refresh_expires)
+    refresh_expires = datetime.now(timezone.utc) + timedelta(
+        days=REFRESH_TOKEN_EXPIRE_DAYS
+    )
+    repo.save_refresh_token(
+        db=db,
+        user_id=payload["user_id"],
+        raw_token=new_refresh,
+        expires_at=refresh_expires,
+    )
 
     return TokenResponse(access_token=new_access, refresh_token=new_refresh)
 
@@ -260,6 +299,7 @@ def refresh_tokens(db: Session, data: RefreshTokenRequest) -> TokenResponse:
 # ============================================
 # Logout
 # ============================================
+
 
 def logout_user(db: Session, user_id: int) -> MessageResponse:
     """Logout by revoking all refresh tokens for the user."""
@@ -270,6 +310,7 @@ def logout_user(db: Session, user_id: int) -> MessageResponse:
 # ============================================
 # Company Registration
 # ============================================
+
 
 def register_company(db: Session, data: CompanyRegisterRequest) -> MessageResponse:
     """
@@ -291,7 +332,9 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> MessageRespon
             detail="A user with this email already exists",
         )
 
-    schema_name = "company_" + re.sub(r"[^a-z0-9]+", "_", data.company_name.lower()).strip("_")
+    schema_name = "company_" + re.sub(
+        r"[^a-z0-9]+", "_", data.company_name.lower()
+    ).strip("_")
     hashed = hash_password(data.password)
 
     try:

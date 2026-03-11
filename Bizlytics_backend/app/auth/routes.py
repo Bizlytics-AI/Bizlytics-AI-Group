@@ -1,19 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.auth.schemas import (
-    HRRegisterRequest,
-    LoginRequest,
-    RefreshTokenRequest,
-    TokenResponse,
-    MessageResponse,
-    UserResponse,
-    CompanyRegisterRequest,
-)
 from app.auth import service
 from app.auth.dependencies import get_current_user
-from app.auth.models import User, UserRole, Company
+from app.auth.models import Company, User, UserRole
+from app.auth.schemas import (
+    CompanyRegisterRequest,
+    HRRegisterRequest,
+    LoginRequest,
+    MessageResponse,
+    RefreshTokenRequest,
+    TokenResponse,
+    UserResponse,
+)
+from app.database import get_db
 
 router = APIRouter()
 
@@ -21,6 +21,7 @@ router = APIRouter()
 # ============================================
 # Company Registration
 # ============================================
+
 
 @router.post("/company/register", response_model=MessageResponse, status_code=201)
 def company_register(data: CompanyRegisterRequest, db: Session = Depends(get_db)):
@@ -32,6 +33,7 @@ def company_register(data: CompanyRegisterRequest, db: Session = Depends(get_db)
 # HR Registration
 # ============================================
 
+
 @router.post("/hr/register", response_model=MessageResponse, status_code=201)
 def hr_register(data: HRRegisterRequest, db: Session = Depends(get_db)):
     """Register HR account (pending company approval)."""
@@ -41,6 +43,7 @@ def hr_register(data: HRRegisterRequest, db: Session = Depends(get_db)):
 # ============================================
 # Company HR Management (approve / reject)
 # ============================================
+
 
 def require_company(current_user: User = Depends(get_current_user)) -> User:
     """Dependency to enforce company role."""
@@ -58,7 +61,9 @@ def list_pending_hrs(
     current_user: User = Depends(require_company),
 ):
     """List pending HR registrations for this company."""
-    company = db.query(Company).filter(Company.company_email == current_user.email).first()
+    company = (
+        db.query(Company).filter(Company.company_email == current_user.email).first()
+    )
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return service.get_pending_hrs(db, company.id)
@@ -71,7 +76,9 @@ def approve_hr(
     current_user: User = Depends(require_company),
 ):
     """Approve a pending HR registration."""
-    company = db.query(Company).filter(Company.company_email == current_user.email).first()
+    company = (
+        db.query(Company).filter(Company.company_email == current_user.email).first()
+    )
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return service.approve_hr(db, company.id, hr_id)
@@ -84,7 +91,9 @@ def reject_hr(
     current_user: User = Depends(require_company),
 ):
     """Reject a pending HR registration."""
-    company = db.query(Company).filter(Company.company_email == current_user.email).first()
+    company = (
+        db.query(Company).filter(Company.company_email == current_user.email).first()
+    )
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return service.reject_hr(db, company.id, hr_id)
@@ -93,6 +102,7 @@ def reject_hr(
 # ============================================
 # Login, Refresh, Logout, Profile
 # ============================================
+
 
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest, db: Session = Depends(get_db)):
@@ -107,7 +117,9 @@ def refresh(data: RefreshTokenRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/logout", response_model=MessageResponse)
-def logout(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def logout(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     """Logout — revokes all refresh tokens. Requires JWT."""
     return service.logout_user(db, current_user.id)
 

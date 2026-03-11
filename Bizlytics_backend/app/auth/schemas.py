@@ -1,9 +1,10 @@
-from pydantic import BaseModel, Field
-from typing import Optional
 from datetime import datetime
+from typing import Optional
 
+from pydantic import BaseModel, Field
 
 # --- Company Registration (Developer B) ---
+
 
 class CompanyRegisterRequest(BaseModel):
     company_name: str = Field(..., min_length=2, max_length=255)
@@ -13,6 +14,7 @@ class CompanyRegisterRequest(BaseModel):
 
 # --- HR Registration (Developer A) ---
 
+
 class HRRegisterRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=255)
     password: str = Field(..., min_length=6, max_length=128)
@@ -21,6 +23,7 @@ class HRRegisterRequest(BaseModel):
 
 # --- Login (Developer A) ---
 
+
 class LoginRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=255)
     password: str = Field(..., min_length=6, max_length=128)
@@ -28,11 +31,13 @@ class LoginRequest(BaseModel):
 
 # --- Refresh Token (Developer A) ---
 
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
 # --- Responses (Shared) ---
+
 
 class TokenResponse(BaseModel):
     access_token: str
