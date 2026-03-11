@@ -14,6 +14,4 @@ class HRAccount(TenantBase):
 
     password_hash = Column(String, nullable=False)
 
-    otp_verified = Column(Boolean, default=False)
-
     created_at = Column(DateTime, default=datetime.utcnow)
