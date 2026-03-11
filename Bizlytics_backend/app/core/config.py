@@ -1,9 +1,12 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:1234@localhost:5432/bizlytics")
+DATABASE_URL: str = os.getenv(
+    "DATABASE_URL", "postgresql://postgres:1234@localhost:5432/bizlytics"
+)
 
 JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "change-me-in-production")
 JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")

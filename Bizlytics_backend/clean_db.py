@@ -1,5 +1,5 @@
+from app.auth.models import HRAccount, RefreshToken, User
 from app.database import SessionLocal
-from app.auth.models import User, HRAccount, RefreshToken
 
 db = SessionLocal()
 

@@ -1,9 +1,17 @@
 import logging
+import traceback
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.database import Base, engine
-from app.auth import models as auth_models
-from app.analytics import models as analytics_models
+
+# Logging Configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -12,47 +20,47 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
 # Debug Logging Middleware
 @app.middleware("http")
 async def log_requests(request, call_next):
-    print(f"\n[REQUEST] {request.method} {request.url}", flush=True)
+    logger.info("[REQUEST] %s %s", request.method, request.url)
     try:
         response = await call_next(request)
-        print(f"[RESPONSE] {response.status_code}\n", flush=True)
+        logger.info("[RESPONSE] %s", response.status_code)
         return response
     except Exception as e:
-        import traceback
-        print(f"\n[CRITICAL ERROR] Middleware caught exception:", flush=True)
+        logger.error("[CRITICAL ERROR] Middleware caught exception")
         traceback.print_exc()
-        print("\n", flush=True)
         raise e
+
 
 # CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Logging Configuration
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
-)
-
 # Initialize Database
 Base.metadata.create_all(bind=engine)
 
-# Include Routers (Delay imports to avoid circular dependency issues)
-from app.auth.routes import router as auth_router
-from app.auth.admin_routes import router as admin_router
-from app.analytics.routes import router as analytics_router
+# Router imports (delayed to avoid circular dependencies)
+from app.analytics.routes import router as analytics_router  # noqa: E402
+from app.auth.admin_routes import router as admin_router  # noqa: E402
+from app.auth.routes import router as auth_router  # noqa: E402
 
+# Include Routers
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(admin_router, prefix="/admin", tags=["Admin"])
 app.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
+
 
 @app.get("/")
 def root():

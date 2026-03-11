@@ -1,13 +1,15 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Enum, ForeignKey
-from sqlalchemy.orm import relationship
-from datetime import datetime
-from app.database import Base
 import enum
+from datetime import datetime
 
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+
+from app.database import Base
 
 # ----------------------------
 # ENUMS
 # ----------------------------
+
 
 class CompanyStatus(str, enum.Enum):
     pending = "pending"
@@ -31,6 +33,7 @@ class UserRole(str, enum.Enum):
 # COMPANY TABLE (PUBLIC SCHEMA)
 # ----------------------------
 
+
 class Company(Base):
     __tablename__ = "companies"
     __table_args__ = {"schema": "public"}
@@ -48,6 +51,7 @@ class Company(Base):
 # ----------------------------
 # GLOBAL USERS TABLE (PUBLIC SCHEMA)
 # ----------------------------
+
 
 class User(Base):
     __tablename__ = "users"
@@ -67,12 +71,15 @@ class User(Base):
 # HR ACCOUNTS (PUBLIC SCHEMA — linked to company via FK)
 # ----------------------------
 
+
 class HRAccount(Base):
     __tablename__ = "hr_accounts"
     __table_args__ = {"schema": "public"}
 
     id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(Integer, ForeignKey("public.companies.id", ondelete="CASCADE"), nullable=False)
+    company_id = Column(
+        Integer, ForeignKey("public.companies.id", ondelete="CASCADE"), nullable=False
+    )
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     status = Column(Enum(HRStatus), default=HRStatus.pending)
@@ -85,12 +92,18 @@ class HRAccount(Base):
 # REFRESH TOKENS (PUBLIC SCHEMA)
 # ----------------------------
 
+
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
     __table_args__ = {"schema": "public"}
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("public.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     token_hash = Column(String, unique=True, nullable=False, index=True)
     expires_at = Column(DateTime, nullable=False)
     revoked = Column(Boolean, default=False)

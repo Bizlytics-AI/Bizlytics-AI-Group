@@ -1,9 +1,12 @@
-from sqlalchemy.orm import Session
-from fastapi import UploadFile, HTTPException
-from app.analytics.models import RawUpload, FileType, UploadStatus
 import logging
 
+from fastapi import HTTPException, UploadFile
+from sqlalchemy.orm import Session
+
+from app.analytics.models import FileType, RawUpload, UploadStatus
+
 logger = logging.getLogger(__name__)
+
 
 def detect_file_type(filename: str) -> FileType:
     """Detect file type based on extension."""
@@ -17,25 +20,28 @@ def detect_file_type(filename: str) -> FileType:
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
+
 async def save_raw_upload(db: Session, company_id: int, file: UploadFile) -> RawUpload:
     """Save the raw file content to PostgreSQL and stop (ETL deferred)."""
     try:
         content = await file.read()
         file_type = detect_file_type(file.filename)
-        
+
         raw_upload = RawUpload(
             company_id=company_id,
             filename=file.filename,
             file_type=file_type,
             content=content,
-            status=UploadStatus.completed # Marking as completed since we aren't doing background ETL for now
+            status=UploadStatus.completed,  # Marking as completed since we aren't doing background ETL for now
         )
-        
+
         db.add(raw_upload)
         db.commit()
         db.refresh(raw_upload)
-        
-        logger.info(f"File {file.filename} saved to PostgreSQL for company {company_id}")
+
+        logger.info(
+            f"File {file.filename} saved to PostgreSQL for company {company_id}"
+        )
         return raw_upload
     except Exception as e:
         db.rollback()

@@ -1,6 +1,5 @@
 import subprocess
-import sys
-import os
+
 
 def run_uvicorn():
     print("Starting uvicorn with output capture...")
@@ -10,12 +9,13 @@ def run_uvicorn():
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
-        cwd=r"c:\Users\acer\Desktop\Bizlytics Ai\Bizlytics_backend"
+        cwd=r"c:\Users\acer\Desktop\Bizlytics Ai\Bizlytics_backend",
     )
 
     # Print output in real-time
     for line in process.stdout:
         print(line, end="", flush=True)
+
 
 if __name__ == "__main__":
     run_uvicorn()
