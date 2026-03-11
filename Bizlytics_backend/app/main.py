@@ -2,7 +2,8 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
-from app.auth import models
+from app.auth import models as auth_models
+from app.analytics import models as analytics_models
 
 # Initialize FastAPI App
 app = FastAPI(
@@ -47,9 +48,11 @@ Base.metadata.create_all(bind=engine)
 # Include Routers (Delay imports to avoid circular dependency issues)
 from app.auth.routes import router as auth_router
 from app.auth.admin_routes import router as admin_router
+from app.analytics.routes import router as analytics_router
 
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(admin_router, prefix="/admin", tags=["Admin"])
+app.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
 
 @app.get("/")
 def root():

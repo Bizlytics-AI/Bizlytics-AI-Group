@@ -1,3 +1,4 @@
+from __future__ import annotations
 import hashlib
 from datetime import datetime
 
@@ -9,13 +10,12 @@ from app.auth.models import (
     User,
     UserRole,
     HRAccount,
-    HRStatus,
     RefreshToken,
 )
 
 
 # ============================================
-# Company Operations
+# Company Operations (Used by Developer B)
 # ============================================
 
 def get_company_by_email(db: Session, email: str) -> Company | None:
@@ -34,7 +34,7 @@ def create_company(db: Session, company_name: str, company_email: str, schema_na
 
 
 # ============================================
-# User Operations
+# User Operations (Used by Developer A)
 # ============================================
 
 def get_user_by_email(db: Session, email: str) -> User | None:
@@ -53,7 +53,7 @@ def create_user(db: Session, email: str, password_hash: str, role: UserRole, sch
 
 
 # ============================================
-# HR Account Operations
+# HR Account Operations (Used by Developer A)
 # ============================================
 
 def create_hr_account(db: Session, company_id: int, email: str, password_hash: str) -> HRAccount:
@@ -61,14 +61,15 @@ def create_hr_account(db: Session, company_id: int, email: str, password_hash: s
         company_id=company_id,
         email=email,
         password_hash=password_hash,
-        status=HRStatus.pending,
     )
     db.add(hr)
     return hr
 
 
+
+
 # ============================================
-# Refresh Token Operations
+# Refresh Token Operations (Used by Developer A)
 # ============================================
 
 def _hash_token(token: str) -> str:
