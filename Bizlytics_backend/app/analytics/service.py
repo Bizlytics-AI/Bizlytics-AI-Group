@@ -75,7 +75,7 @@ async def save_raw_file(db: Session, file: UploadFile, company_id: int) -> RawUp
             filename=file.filename,
             file_type=file_type,
             content=content,
-            status=UploadStatus.completed,  # Marking as completed since we aren't doing background ETL for now
+            status=UploadStatus.pending,  # B1: Marked as pending till ETL runs
         )
 
         db.add(raw_upload)
