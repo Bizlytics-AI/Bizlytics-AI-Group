@@ -31,8 +31,8 @@ async def upload_file(
 
     company_id = hr_account.company_id
 
-    # Save the file to Postgres
-    raw_upload = await service.save_raw_upload(db, company_id, file)
+    # Save the file to Postgres (A4)
+    raw_upload = await service.save_raw_file(db, file, company_id)
 
     return {
         "message": f"File '{file.filename}' uploaded and saved to database.",
