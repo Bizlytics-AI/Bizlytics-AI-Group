@@ -15,7 +15,7 @@ from app.auth.models import (
 )
 
 # ============================================
-# Company Operations (Used by Developer B)
+# Company Operations  
 # ============================================
 
 
@@ -37,7 +37,7 @@ def create_company(
 
 
 # ============================================
-# User Operations (Used by Developer A)
+# User Operations 
 # ============================================
 
 
@@ -63,7 +63,7 @@ def create_user(
 
 
 # ============================================
-# HR Account Operations (Used by Developer A)
+# HR Account Operations 
 # ============================================
 
 
@@ -80,7 +80,7 @@ def create_hr_account(
 
 
 # ============================================
-# Refresh Token Operations (Used by Developer A)
+# Refresh Token Operations 
 # ============================================
 
 

@@ -1,5 +1,6 @@
 import logging
 import re
+
 from datetime import datetime, timedelta, timezone
 from typing import List
 
@@ -362,3 +363,4 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> MessageRespon
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+

@@ -1,5 +1,9 @@
 import logging
+import pandas as pd
+import io
 
+from app.analytics.duckdb_manager import load_dataframe
+from app.analytics.models import UploadStatus,RawUpload
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
@@ -47,3 +51,4 @@ async def save_raw_upload(db: Session, company_id: int, file: UploadFile) -> Raw
         db.rollback()
         logger.error(f"Error saving file to Postgres: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+
