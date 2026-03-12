@@ -3,7 +3,6 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-# --- Company Registration (Developer B) ---
 
 
 class CompanyRegisterRequest(BaseModel):
@@ -12,7 +11,6 @@ class CompanyRegisterRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
 
 
-# --- HR Registration (Developer A) ---
 
 
 class HRRegisterRequest(BaseModel):
@@ -21,7 +19,6 @@ class HRRegisterRequest(BaseModel):
     company_email: str = Field(..., min_length=5, max_length=255)
 
 
-# --- Login (Developer A) ---
 
 
 class LoginRequest(BaseModel):
@@ -29,14 +26,12 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
 
 
-# --- Refresh Token (Developer A) ---
 
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
-# --- Responses (Shared) ---
 
 
 class TokenResponse(BaseModel):
