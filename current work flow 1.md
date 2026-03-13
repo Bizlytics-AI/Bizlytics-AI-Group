@@ -77,7 +77,7 @@ The backend is located in the `Bizlytics_backend/` directory.
 5. **Database:** Updates or retrieves data.
 6. **Response:** Backend sends JSON back to React, which updates the UI (e.g., redirecting to Dashboard).
 
----
+-----
 
 ## 5. Security Summary
 - **JWT Authentication:** Stateful session management using tokens stored in the browser.
