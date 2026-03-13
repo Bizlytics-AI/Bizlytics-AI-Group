@@ -4,15 +4,10 @@ from sqlalchemy.orm import Session
 from app.auth import service
 from app.auth.dependencies import get_current_user
 from app.auth.models import Company, User, UserRole
-from app.auth.schemas import (
-    CompanyRegisterRequest,
-    HRRegisterRequest,
-    LoginRequest,
-    MessageResponse,
-    RefreshTokenRequest,
-    TokenResponse,
-    UserResponse,
-)
+from app.auth.schemas import (CompanyRegisterRequest, HRRegisterRequest,
+                              LoginRequest, MessageResponse,
+                              RefreshTokenRequest, TokenResponse, UserResponse,
+                              ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest)
 from app.database import get_db
 
 router = APIRouter()
@@ -49,16 +44,14 @@ def require_company(current_user: User = Depends(get_current_user)) -> User:
     """Dependency to enforce company role."""
     if current_user.role != UserRole.company:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Requires company privileges",
+            status_code=status.HTTP_403_FORBIDDEN, detail="Requires company privileges",
         )
     return current_user
 
 
 @router.get("/company/hr/pending")
 def list_pending_hrs(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_company),
+    db: Session = Depends(get_db), current_user: User = Depends(require_company),
 ):
     """List pending HR registrations for this company."""
     company = (
@@ -128,3 +121,19 @@ def logout(
 def get_me(current_user: User = Depends(get_current_user)):
     """Get current user profile. Requires JWT."""
     return current_user
+
+@router.post("/change-password")
+def change_password(
+    data: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return service.change_password(db, current_user, data)
+
+@router.post("/forgot-password", response_model=MessageResponse)
+def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    return service.forgot_password(db, data)
+
+@router.post("/reset-password", response_model=MessageResponse)
+def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    return service.reset_password(db, data)

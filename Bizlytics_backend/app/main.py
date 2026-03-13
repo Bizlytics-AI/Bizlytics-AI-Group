@@ -8,8 +8,7 @@ from app.database import Base, engine
 
 # Logging Configuration
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+    level=logging.INFO, format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
 

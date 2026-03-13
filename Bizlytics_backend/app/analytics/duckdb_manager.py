@@ -1,5 +1,6 @@
-import duckdb
 from pathlib import Path
+
+import duckdb
 
 # DuckDB database file location
 DB_PATH = "data/bizlytics.db"
@@ -21,6 +22,7 @@ def get_connection():
 
     return _conn
 
+
 def create_table_for_company(company_id: int, df):
     """
     A2: Create company-specific table based on DataFrame schema.
@@ -28,12 +30,11 @@ def create_table_for_company(company_id: int, df):
     """
     con = get_connection()
     table_name = f"company_{company_id}_data"
-    
+
     # Create table if it doesn't exist using the DataFrame schema
-    con.execute(
-        f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM df LIMIT 0"
-    )
+    con.execute(f"CREATE TABLE IF NOT EXISTS {table_name} AS SELECT * FROM df LIMIT 0")
     return table_name
+
 
 def load_dataframe(company_id: int, df):
     """
@@ -43,7 +44,5 @@ def load_dataframe(company_id: int, df):
     table_name = create_table_for_company(company_id, df)
 
     # Insert data
-    con.execute(
-        f"INSERT INTO {table_name} SELECT * FROM df"
-    )
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM df")
     return len(df)
