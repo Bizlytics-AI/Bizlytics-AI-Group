@@ -4,12 +4,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
 
-from app.core.config import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    JWT_ALGORITHM,
-    JWT_SECRET_KEY,
-    REFRESH_TOKEN_EXPIRE_DAYS,
-)
+from app.core.config import (ACCESS_TOKEN_EXPIRE_MINUTES, JWT_ALGORITHM,
+                             JWT_SECRET_KEY, REFRESH_TOKEN_EXPIRE_DAYS)
 
 
 def create_access_token(data: dict) -> str:
@@ -45,3 +41,14 @@ def decode_token(token: str) -> dict:
             detail="Token is invalid or has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+def create_password_reset_token(data: dict):
+    expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    payload = data.copy()
+    payload.update({
+        "exp": expire,
+        "token_type": "password_reset"
+    })
+
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)

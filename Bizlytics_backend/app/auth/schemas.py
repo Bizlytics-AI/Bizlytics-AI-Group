@@ -1,8 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field ,EmailStr
 
 
 class CompanyRegisterRequest(BaseModel):
@@ -11,14 +10,10 @@ class CompanyRegisterRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
 
 
-
-
 class HRRegisterRequest(BaseModel):
     email: str = Field(..., min_length=5, max_length=255)
     password: str = Field(..., min_length=6, max_length=128)
     company_email: str = Field(..., min_length=5, max_length=255)
-
-
 
 
 class LoginRequest(BaseModel):
@@ -26,12 +21,8 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=6, max_length=128)
 
 
-
-
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
-
-
 
 
 class TokenResponse(BaseModel):
@@ -53,3 +44,13 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str

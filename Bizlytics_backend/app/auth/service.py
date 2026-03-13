@@ -1,6 +1,5 @@
 import logging
 import re
-
 from datetime import datetime, timedelta, timezone
 from typing import List
 
@@ -8,20 +7,20 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.auth import repository as repo
-from app.auth.models import Company, HRAccount, HRStatus, UserRole
-from app.auth.schemas import (
-    CompanyRegisterRequest,
-    HRRegisterRequest,
-    LoginRequest,
-    MessageResponse,
-    RefreshTokenRequest,
-    TokenResponse,
-)
+from app.auth.models import Company, HRAccount, HRStatus, UserRole ,User
+from app.auth.models import CompanyStatus
+from app.auth.schemas import (CompanyRegisterRequest, HRRegisterRequest,
+                              LoginRequest, MessageResponse,
+                              RefreshTokenRequest, TokenResponse,
+                              ForgotPasswordRequest , ResetPasswordRequest,
+                              ChangePasswordRequest)
 from app.core.config import REFRESH_TOKEN_EXPIRE_DAYS
-from app.core.jwt_handler import create_access_token, create_refresh_token, decode_token
+from app.core.jwt_handler import (create_access_token, create_refresh_token,
+                                  decode_token,
+                                  create_password_reset_token)
 from app.core.security import hash_password, verify_password
 from app.core.tenant import create_tenant_schema
-
+from app.core.emails import send_email
 logger = logging.getLogger(__name__)
 
 
@@ -54,7 +53,7 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
             status_code=404, detail="Company not found with this email."
         )
 
-    from app.auth.models import CompanyStatus
+    # from app.auth.models import CompanyStatus
 
     if company.status != CompanyStatus.approved:
         raise HTTPException(
@@ -76,10 +75,7 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
 
         # Create HR account (status=pending)
         repo.create_hr_account(
-            db=db,
-            company_id=company.id,
-            email=data.email,
-            password_hash=hashed,
+            db=db, company_id=company.id, email=data.email, password_hash=hashed,
         )
 
         db.commit()
@@ -263,8 +259,7 @@ def refresh_tokens(db: Session, data: RefreshTokenRequest) -> TokenResponse:
     token_record = repo.get_refresh_token(db, data.refresh_token)
     if not token_record:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token not found",
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token not found",
         )
 
     if token_record.revoked:
@@ -364,3 +359,57 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> MessageRespon
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
+def forgot_password(db: Session, data: ForgotPasswordRequest) -> MessageResponse:
+
+    user = repo.get_user_by_email(db, data.email)
+
+    if not user:
+        return MessageResponse(message="If the email exists, reset link sent.")
+
+    token = create_password_reset_token({"user_id": user.id})
+
+    reset_link = f"http://frontend/reset-password?token={token}"
+
+    send_email(
+        to=user.email,
+        subject="Password Reset",
+        body=f"Click this link to reset password: {reset_link}",
+    )
+
+    return MessageResponse(message="Password reset link sent.")
+
+def reset_password(db: Session, data: ResetPasswordRequest) -> MessageResponse:
+
+    payload = decode_token(data.token)
+
+    if payload.get("token_type") != "password_reset":
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    user = db.query(User).filter(User.id == payload["user_id"]).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.password_hash = hash_password(data.new_password)
+
+    db.commit()
+
+    return MessageResponse(message="Password reset successful")
+
+def change_password(
+    db: Session,
+    user: User,
+    data: ChangePasswordRequest
+) -> MessageResponse:
+
+    if not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=400,
+            detail="Current password incorrect"
+        )
+
+    user.password_hash = hash_password(data.new_password)
+
+    db.commit()
+
+    return MessageResponse(message="Password updated successfully")

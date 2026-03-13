@@ -5,17 +5,11 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.auth.models import (
-    Company,
-    CompanyStatus,
-    HRAccount,
-    RefreshToken,
-    User,
-    UserRole,
-)
+from app.auth.models import (Company, CompanyStatus, HRAccount, RefreshToken,
+                             User, UserRole)
 
 # ============================================
-# Company Operations  
+# Company Operations
 # ============================================
 
 
@@ -37,7 +31,7 @@ def create_company(
 
 
 # ============================================
-# User Operations 
+# User Operations
 # ============================================
 
 
@@ -53,34 +47,27 @@ def create_user(
     schema_name: str | None = None,
 ) -> User:
     user = User(
-        email=email,
-        password_hash=password_hash,
-        role=role,
-        schema_name=schema_name,
+        email=email, password_hash=password_hash, role=role, schema_name=schema_name,
     )
     db.add(user)
     return user
 
 
 # ============================================
-# HR Account Operations 
+# HR Account Operations
 # ============================================
 
 
 def create_hr_account(
     db: Session, company_id: int, email: str, password_hash: str
 ) -> HRAccount:
-    hr = HRAccount(
-        company_id=company_id,
-        email=email,
-        password_hash=password_hash,
-    )
+    hr = HRAccount(company_id=company_id, email=email, password_hash=password_hash,)
     db.add(hr)
     return hr
 
 
 # ============================================
-# Refresh Token Operations 
+# Refresh Token Operations
 # ============================================
 
 
@@ -120,8 +107,7 @@ def revoke_refresh_token(db: Session, raw_token: str) -> None:
 
 def revoke_all_user_tokens(db: Session, user_id: int) -> None:
     db.query(RefreshToken).filter(
-        RefreshToken.user_id == user_id,
-        not RefreshToken.revoked,
+        RefreshToken.user_id == user_id, not RefreshToken.revoked,
     ).update({"revoked": True})
 
     db.commit()

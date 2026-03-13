@@ -1,12 +1,11 @@
-import logging
-import pandas as pd
 import io
+import logging
 
-from app.analytics.duckdb_manager import load_dataframe
-from app.analytics.models import UploadStatus,RawUpload
+import pandas as pd
 from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from app.analytics.duckdb_manager import load_dataframe
 from app.analytics.models import FileType, RawUpload, UploadStatus
 
 logger = logging.getLogger(__name__)
@@ -33,12 +32,7 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     B2-B4: Apply cleaning logic: normalization, null handling, and deduplication.
     """
     # B2: Column normalisation
-    df.columns = (
-        df.columns
-        .str.strip()
-        .str.lower()
-        .str.replace(" ", "_", regex=False)
-    )
+    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_", regex=False)
 
     # B3: Null handling
     df = df.dropna(how="all")  # Rows
@@ -51,6 +45,8 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = df.apply(lambda col: col.str.strip() if col.dtype == "object" else col)
 
     return df
+
+
 def detect_file_type(filename: str) -> FileType:
     """Detect file type based on extension."""
     ext = filename.split(".")[-1].lower()
@@ -90,4 +86,3 @@ async def save_raw_file(db: Session, file: UploadFile, company_id: int) -> RawUp
         db.rollback()
         logger.error(f"Error saving file to Postgres: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
-
