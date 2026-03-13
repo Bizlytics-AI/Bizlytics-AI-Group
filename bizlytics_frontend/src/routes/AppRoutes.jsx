@@ -8,6 +8,8 @@ import Loader from '../components/common/Loader';
 import Login from '../pages/auth/Login';
 import CompanyRegister from '../pages/auth/CompanyRegister';
 import HRRegister from '../pages/auth/HRRegister';
+import ForgotPassword from '../pages/auth/ForgotPassword';
+import ResetPassword from '../pages/auth/ResetPassword';
 import AdminDashboard from '../pages/AdminDashboard';
 import CompanyDashboard from '../pages/CompanyDashboard';
 import HRDashboard from '../pages/HRDashboard';
@@ -70,6 +72,8 @@ const AppRoutes = () => {
       <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
       <Route path="/register/company" element={<AuthRoute><CompanyRegister /></AuthRoute>} />
       <Route path="/register/hr" element={<AuthRoute><HRRegister /></AuthRoute>} />
+      <Route path="/forgot-password" element={<AuthRoute><ForgotPassword /></AuthRoute>} />
+      <Route path="/reset-password" element={<AuthRoute><ResetPassword /></AuthRoute>} />
 
       {/* Protected Dashboard Routes based on role */}
       <Route
