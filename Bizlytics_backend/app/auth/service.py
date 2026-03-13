@@ -14,7 +14,7 @@ from app.auth.schemas import (CompanyRegisterRequest, HRRegisterRequest,
                               RefreshTokenRequest, TokenResponse,
                               ForgotPasswordRequest , ResetPasswordRequest,
                               ChangePasswordRequest)
-from app.core.config import REFRESH_TOKEN_EXPIRE_DAYS
+from app.core.config import REFRESH_TOKEN_EXPIRE_DAYS, FRONTEND_URL
 from app.core.jwt_handler import (create_access_token, create_refresh_token,
                                   decode_token,
                                   create_password_reset_token)
@@ -368,7 +368,7 @@ def forgot_password(db: Session, data: ForgotPasswordRequest) -> MessageResponse
 
     token = create_password_reset_token({"user_id": user.id})
 
-    reset_link = f"http://frontend/reset-password?token={token}"
+    reset_link = f"{FRONTEND_URL}/reset-password?token={token}"
 
     send_email(
         to=user.email,

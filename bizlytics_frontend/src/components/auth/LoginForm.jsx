@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Lock } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 import Input from '../common/Input';
@@ -104,9 +104,9 @@ const LoginForm = () => {
         </div>
 
         <div className="text-sm">
-          <a href="#" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <Link to="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">
             Forgot password?
-          </a>
+          </Link>
         </div>
       </div>
 

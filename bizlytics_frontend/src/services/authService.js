@@ -70,6 +70,24 @@ const authService = {
     const response = await api.post(`/auth/company/hr/${hrId}/reject`);
     return response.data;
   },
+
+  // Forgot Password
+  forgotPassword: async (email) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  // Reset Password (with token from email link)
+  resetPassword: async (token, new_password) => {
+    const response = await api.post('/auth/reset-password', { token, new_password });
+    return response.data;
+  },
+
+  // Change Password (requires auth)
+  changePassword: async (current_password, new_password) => {
+    const response = await api.post('/auth/change-password', { current_password, new_password });
+    return response.data;
+  },
 };
 
 export default authService;
