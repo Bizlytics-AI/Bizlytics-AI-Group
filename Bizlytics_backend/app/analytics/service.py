@@ -1,4 +1,4 @@
-import io
+import io #binary file → readable buffer
 import logging
 
 import pandas as pd
@@ -27,25 +27,51 @@ def _parse_to_dataframe(content: bytes, file_type: FileType) -> pd.DataFrame:
     raise ValueError(f"Unsupported file type: {file_type}")
 
 
+# def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+#     """
+#     B2-B4: Apply cleaning logic: normalization, null handling, and deduplication.
+#     """
+#     # B2: Column normalisation
+#     df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_", regex=False)
+
+#     # B3: Null handling
+#     df = df.dropna(how="all")  # Rows
+#     df = df.dropna(axis=1, how="all")  # Columns
+
+#     # B4: Deduplication
+#     df = df.drop_duplicates().reset_index(drop=True)
+
+#     # Whitespace stripping from string values
+#     df = df.apply(lambda col: col.str.strip() if col.dtype == "object" else col)
+
+#     return df
+
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    B2-B4: Apply cleaning logic: normalization, null handling, and deduplication.
-    """
-    # B2: Column normalisation
-    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_", regex=False)
 
-    # B3: Null handling
-    df = df.dropna(how="all")  # Rows
-    df = df.dropna(axis=1, how="all")  # Columns
+    # Normalize columns
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.lower()
+        .str.replace(" ", "_", regex=False)
+    )
 
-    # B4: Deduplication
-    df = df.drop_duplicates().reset_index(drop=True)
-
-    # Whitespace stripping from string values
+    # Strip whitespace first
     df = df.apply(lambda col: col.str.strip() if col.dtype == "object" else col)
 
-    return df
+    # Convert empty strings to NaN
+    df.replace("", pd.NA, inplace=True)
 
+    # Remove empty rows
+    df = df.dropna(how="all")
+
+    # Remove empty columns
+    df = df.dropna(axis=1, how="all")
+
+    # Remove duplicates
+    df = df.drop_duplicates().reset_index(drop=True)
+
+    return df
 
 def detect_file_type(filename: str) -> FileType:
     """Detect file type based on extension."""
