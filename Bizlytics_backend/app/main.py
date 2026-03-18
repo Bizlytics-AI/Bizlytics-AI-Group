@@ -1,11 +1,11 @@
 import logging
 import traceback
 
-from fastapi import FastAPI
+from fastapi import FastAPI,Request,Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-
+from app.middleware.tenant import tenant_middleware
 # Logging Configuration
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
@@ -18,7 +18,7 @@ app = FastAPI(
     description="Business Analytics Platform — Multi-tenant",
     version="1.0.0",
 )
-
+app.middleware("http")(tenant_middleware)
 
 # Debug Logging Middleware
 @app.middleware("http")
@@ -54,13 +54,18 @@ Base.metadata.create_all(bind=engine)
 from app.analytics.routes import router as analytics_router  # noqa: E402
 from app.auth.admin_routes import router as admin_router  # noqa: E402
 from app.auth.routes import router as auth_router  # noqa: E402
-
+from app.tenant.routes import router as tenant_router  # noqa: E402
 # Include Routers
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(admin_router, prefix="/admin", tags=["Admin"])
 app.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
-
+app.include_router(tenant_router, prefix="/tenant", tags=["Tenant"])
 
 @app.get("/")
-def root():
-    return {"message": "Bizlytics API Running"}
+# def root():
+#     return {"message": "Bizlytics API Running"}
+async def root(request: Request, x_tenant_id: str = Header(default="default")):
+    return {
+        "message": "Bizlytics API Running",
+        "tenant": x_tenant_id
+    }

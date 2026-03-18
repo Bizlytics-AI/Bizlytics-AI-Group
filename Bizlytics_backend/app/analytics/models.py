@@ -20,14 +20,13 @@ class UploadStatus(str, enum.Enum):
     failed = "failed"
 
 
-class RawUpload(Base):
+from app.tenant.models import TenantBase
+
+class RawUpload(TenantBase):
     __tablename__ = "raw_uploads"
-    __table_args__ = {"schema": "public"}
 
     id = Column(Integer, primary_key=True, index=True)
-    company_id = Column(
-        Integer, ForeignKey("public.companies.id", ondelete="CASCADE"), nullable=False
-    )
+    company_id = Column(Integer, nullable=False) # Removed explicit FK to public.companies to avoid metadata split issues
     filename = Column(String, nullable=False)
     file_type = Column(Enum(FileType), nullable=False)
     content = Column(LargeBinary, nullable=False)  # Stores the raw file BLOB

@@ -7,12 +7,21 @@ const api = axios.create({
   },
 });
 
-// Request Interceptor (add token to headers)
+// Request Interceptor (add token and tenant header)
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
+      try {
+        // Decode JWT payload to get the schema_name
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.schema_name) {
+          config.headers['X-Tenant-ID'] = payload.schema_name;
+        }
+      } catch (e) {
+        console.error("Failed to decode token for tenant ID", e);
+      }
     }
     return config;
   },

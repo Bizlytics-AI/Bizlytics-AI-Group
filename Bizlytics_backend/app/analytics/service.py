@@ -102,7 +102,7 @@ async def save_raw_file(db: Session, file: UploadFile, company_id: int) -> RawUp
 
         db.add(raw_upload)
         db.commit()
-        db.refresh(raw_upload)
+        # db.refresh(raw_upload)  # No longer needed with expire_on_commit=False
 
         logger.info(
             f"File {file.filename} saved to PostgreSQL for company {company_id}"
