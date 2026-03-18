@@ -1,18 +1,18 @@
+import enum
 from datetime import datetime
+from sqlalchemy import Column, DateTime, Integer, String, Enum
+from app.tenant.models import TenantBase
 
-from sqlalchemy import Column, DateTime, Integer, String
-from sqlalchemy.orm import declarative_base
-
-TenantBase = declarative_base()
-
+class HRStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
 
 class HRAccount(TenantBase):
     __tablename__ = "hr_accounts"
 
     id = Column(Integer, primary_key=True, index=True)
-
     email = Column(String, unique=True, index=True, nullable=False)
-
     password_hash = Column(String, nullable=False)
-
+    status = Column(Enum(HRStatus), default=HRStatus.pending)
     created_at = Column(DateTime, default=datetime.utcnow)
