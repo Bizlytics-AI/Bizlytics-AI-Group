@@ -350,6 +350,18 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> MessageRespon
         )
 
         create_tenant_schema(db, schema_name)
+        
+        # Switch to the new schema and create tenant tables properly
+        from app.database import engine
+        from app.tenant.models import TenantBase
+        from app.analytics.models import RawUpload
+        from app.auth.tenant_models import HRAccount # Added
+        from sqlalchemy import text
+        
+        with engine.connect() as connection:
+            connection.execute(text(f"SET search_path TO {schema_name}"))
+            TenantBase.metadata.create_all(bind=connection)
+            connection.commit()
 
         db.commit()
         return MessageResponse(

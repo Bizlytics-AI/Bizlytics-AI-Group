@@ -1,16 +1,16 @@
-from app.auth.models import HRAccount, User
-from app.database import SessionLocal
+import os
+import sys
 
-db = SessionLocal()
-users = db.query(User).all()
-hr_accounts = db.query(HRAccount).all()
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-print("--- USERS ---")
-for u in users:
-    print(f"ID: {u.id}, Email: {u.email}, Role: {u.role}")
+from app.database import engine
+from sqlalchemy import text
 
-print("\n--- HR ACCOUNTS ---")
-for h in hr_accounts:
-    print(
-        f"ID: {h.id}, Email: {h.email}, Status: {h.status.value if h.status else 'N/A'}"
-    )
+def check_db():
+    with engine.connect() as conn:
+        res = conn.execute(text("SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog')"))
+        for row in res:
+            print(f"Schema: {row[0]}, Table: {row[1]}")
+
+if __name__ == "__main__":
+    check_db()
