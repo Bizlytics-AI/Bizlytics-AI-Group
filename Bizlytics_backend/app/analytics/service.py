@@ -7,8 +7,18 @@ from sqlalchemy.orm import Session
 
 from app.analytics.duckdb_manager import load_dataframe
 from app.analytics.models import FileType, RawUpload, UploadStatus
+from storage.s3_service import upload_file_to_s3
 
 logger = logging.getLogger(__name__)
+
+
+import requests
+
+def download_file_from_s3(file_url: str) -> bytes:
+    response = requests.get(file_url)
+    if response.status_code != 200:
+        raise Exception("Failed to download file from S3")
+    return response.content
 
 
 def _parse_to_dataframe(content: bytes, file_type: FileType) -> pd.DataFrame:
@@ -86,29 +96,60 @@ def detect_file_type(filename: str) -> FileType:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
 
-async def save_raw_file(db: Session, file: UploadFile, company_id: int) -> RawUpload:
-    """Save the raw file content to PostgreSQL and stop (ETL deferred)."""
+def save_raw_file(db: Session, file_url: str, filename: str, company_id: int) -> RawUpload:
+    """Save the raw file metadata to PostgreSQL and stop (ETL deferred)."""
     try:
-        content = await file.read()
-        file_type = detect_file_type(file.filename)
-
+        file_type = detect_file_type(filename)
+        
         raw_upload = RawUpload(
             company_id=company_id,
-            filename=file.filename,
+            filename=filename,
             file_type=file_type,
-            content=content,
+            s3_url=file_url,
             status=UploadStatus.pending,  # B1: Marked as pending till ETL runs
         )
 
         db.add(raw_upload)
         db.commit()
-        # db.refresh(raw_upload)  # No longer needed with expire_on_commit=False
 
         logger.info(
-            f"File {file.filename} saved to PostgreSQL for company {company_id}"
+            f"File {filename} metadata saved to Postgres for company {company_id}"
         )
         return raw_upload
     except Exception as e:
         db.rollback()
-        logger.error(f"Error saving file to Postgres: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+        logger.error(f"Error saving file details to Postgres: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save file metadata: {str(e)}")
+
+def process_etl(upload_id: int, db: Session):
+    try:
+        raw_upload = db.query(RawUpload).filter(RawUpload.id == upload_id).first()
+        if not raw_upload or not raw_upload.s3_url:
+            return
+        
+        raw_upload.status = UploadStatus.processing
+        db.commit()
+
+        # 1. Download from S3
+        content = download_file_from_s3(raw_upload.s3_url)
+
+        # 2. Parse to DF
+        df = _parse_to_dataframe(content, raw_upload.file_type)
+
+        # 3. Clean DF
+        df_clean = clean_dataframe(df)
+
+        # 4. Load into DuckDB
+        load_dataframe(raw_upload.company_id, df_clean)
+
+        raw_upload.status = UploadStatus.completed
+        raw_upload.row_count = len(df_clean)
+        db.commit()
+    except Exception as e:
+        logger.error(f"ETL failed for upload {upload_id}: {str(e)}")
+        db.rollback()
+        raw_upload = db.query(RawUpload).filter(RawUpload.id == upload_id).first()
+        if raw_upload:
+            raw_upload.status = UploadStatus.failed
+            raw_upload.error_message = str(e)
+            db.commit()
