@@ -10,7 +10,7 @@ const ResetPassword = () => {
       subtitle={
         <span>
           Back to{' '}
-          <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <Link to="/login" className="font-semibold text-indigo-600 hover:underline">
             Sign in
           </Link>
         </span>

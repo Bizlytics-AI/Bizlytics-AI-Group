@@ -10,7 +10,7 @@ const Login = () => {
       subtitle={
         <span>
           Or{' '}
-          <Link to="/register/company" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <Link to="/register/company" className="font-semibold text-indigo-600 hover:underline">
             register a new company
           </Link>
         </span>
@@ -21,7 +21,7 @@ const Login = () => {
       <div className="mt-8 text-center">
         <p className="text-sm text-gray-500">
           Are you an HR employee?{' '}
-          <Link to="/register/hr" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <Link to="/register/hr" className="font-semibold text-indigo-600 hover:underline">
             Register here
           </Link>
         </p>

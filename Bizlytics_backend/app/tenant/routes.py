@@ -2,7 +2,6 @@ from fastapi import APIRouter, Request
 
 router = APIRouter()
 
-# Employee routes removed as per user request (not currently needed)
 
 @router.get("/status")
 async def get_tenant_status(request: Request):

@@ -10,7 +10,7 @@ const CompanyRegister = () => {
       subtitle={
         <span>
           Already have an account?{' '}
-          <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <Link to="/login" className="font-semibold text-indigo-600 hover:underline">
             Sign in
           </Link>
         </span>
