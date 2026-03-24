@@ -4,10 +4,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.analytics import service
+from app.analytics.models import RawUpload # Added
 from app.auth.dependencies import require_hr
 from app.auth.models import User, Company
-from app.auth.tenant_models import HRAccount
 from app.database import get_db
+from storage.s3_service import upload_file_to_s3
+from worker.etl_tasks import process_etl
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,24 +24,34 @@ async def upload_file(
     current_user: User = Depends(require_hr),
 ):
     """
-    Upload a file and save it to PostgreSQL.
+    1. Upload file to S3.
+    2. Save metadata (S3 URL) to Postgres.
+    3. Trigger ETL in background.
     """
-    # Find the numeric company_id from the public.companies table
+    # Find the numeric company_id (needed for DuckDB filename)
     company = (
         db.query(Company).filter(Company.schema_name == current_user.schema_name).first()
     )
     if not company:
         raise HTTPException(status_code=404, detail="Company metadata not found")
-    
-    company_id = company.id
 
-    # Save the file to Postgres (A4)
-    raw_upload = await service.save_raw_file(db, file, company_id)
+    # 1. Upload to S3
+    file_url = upload_file_to_s3(file.file, file.filename, file.content_type)
+    if not file_url:
+        raise HTTPException(status_code=500, detail="Failed to upload file to S3")
+
+    # 2. Save metadata to tenant-specific raw_uploads table
+    raw_upload = service.save_raw_file(db, file_url, file.filename, company.id)
+
+        # 3. Trigger ETL in background using Celery
+    process_etl.delay(raw_upload.id, company.id)
+
 
     return {
-        "message": f"File '{file.filename}' uploaded and saved to database.",
+        "message": f"File '{file.filename}' uploaded to S3 successfully.",
         "upload_id": raw_upload.id,
         "status": raw_upload.status,
+        "s3_url": file_url
     }
 
 
@@ -47,22 +60,10 @@ def list_company_files(
     db: Session = Depends(get_db), current_user: User = Depends(require_hr)
 ):
     """
-    List all uploaded files for the HR's company.
+    List all uploaded files for the HR's company (scoped to tenant schema).
     """
-    # Find the numeric company_id from the public.companies table
-    company = (
-        db.query(Company).filter(Company.schema_name == current_user.schema_name).first()
-    )
-    if not company:
-        raise HTTPException(status_code=404, detail="Company metadata not found")
-
-    company_id = company.id
-
-    from app.analytics.models import RawUpload
-
     files = (
         db.query(RawUpload)
-        .filter(RawUpload.company_id == company_id)
         .order_by(RawUpload.created_at.desc())
         .all()
     )
@@ -72,6 +73,7 @@ def list_company_files(
             "id": f.id,
             "filename": f.filename,
             "status": f.status,
+            "s3_url": f.s3_url,
             "created_at": f.created_at,
         }
         for f in files

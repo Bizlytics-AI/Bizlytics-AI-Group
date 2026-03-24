@@ -5,5 +5,14 @@
     "*.parquet": "duckdb.dataFileViewer",
     "*.csv": "duckdb.dataFileViewer",
     "*.tsv": "duckdb.dataFileViewer"
-  }
+  },
+  "duckdb.databases": [
+    {
+      "alias": "bizlytics",
+      "type": "file",
+      "path": "c:\\Users\\acer\\Desktop\\Bizlytics Ai\\Bizlytics_backend\\data\\bizlytics.db",
+      "attached": false
+    }
+  ],
+  "duckdb.defaultDatabase": "bizlytics"
 }

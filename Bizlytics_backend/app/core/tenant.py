@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.tenant.models import TenantBase
 from app.auth.tenant_models import HRAccount  # Ensure model is registered
+from app.analytics.models import RawUpload # Ensure model is registered
 
 
 def create_tenant_schema(db: Session, schema_name: str):
