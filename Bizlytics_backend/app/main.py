@@ -47,7 +47,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Database
+# Import models to ensure they are registered with Base.metadata before create_all
+from app.auth import models as auth_models
+from app.analytics import models as analytics_models
+
+# Initialize Database (Public Schema)
 Base.metadata.create_all(bind=engine)
 
 # Router imports (delayed to avoid circular dependencies)

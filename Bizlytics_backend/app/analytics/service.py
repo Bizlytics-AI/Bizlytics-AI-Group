@@ -30,7 +30,20 @@ def _parse_to_dataframe(content: bytes, file_type: FileType) -> pd.DataFrame:
     if file_type == FileType.csv:
         return pd.read_csv(buf, encoding="utf-8", on_bad_lines="skip")
     elif file_type == FileType.xlsx:
-        return pd.read_excel(buf, engine="openpyxl")
+        # Load without header first to find the real start of the table
+        df_temp = pd.read_excel(buf, header=None, engine="openpyxl")
+        
+        # Find the first row that has at least 3 non-null values (typical for a table)
+        header_idx = 0
+        for i, row in df_temp.iterrows():
+            if row.count() >= 3:
+                header_idx = i
+                break
+        
+        # Reload with the detected header row
+        buf.seek(0)
+        return pd.read_excel(buf, header=header_idx, engine="openpyxl")
+        
     elif file_type == FileType.json:
         return pd.read_json(buf)
 
@@ -80,6 +93,16 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     # Remove duplicates
     df = df.drop_duplicates().reset_index(drop=True)
+    
+    # CRITICAL: Prevent DuckDB ConversionException on mixed-type columns.
+    # If a column has mostly numbers but some strings ('No'), DuckDB might incorrectly guess 'DOUBLE'.
+    # We strictly cast any remaining 'object' column to 'string' while preserving actual nulls.
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            # Convert non-null values to string to enforce type consistency safely
+            df[col] = df[col].apply(lambda x: str(x) if pd.notnull(x) else x)
+            # Standardize column to pandas string extension type
+            df[col] = df[col].astype('string')
 
     return df
 
@@ -102,7 +125,6 @@ def save_raw_file(db: Session, file_url: str, filename: str, company_id: int) ->
         file_type = detect_file_type(filename)
         
         raw_upload = RawUpload(
-            company_id=company_id,
             filename=filename,
             file_type=file_type,
             s3_url=file_url,
@@ -113,43 +135,10 @@ def save_raw_file(db: Session, file_url: str, filename: str, company_id: int) ->
         db.commit()
 
         logger.info(
-            f"File {filename} metadata saved to Postgres for company {company_id}"
+            f"File {filename} metadata saved to Postgres for company (schema scope)"
         )
         return raw_upload
     except Exception as e:
         db.rollback()
         logger.error(f"Error saving file details to Postgres: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to save file metadata: {str(e)}")
-
-def process_etl(upload_id: int, db: Session):
-    try:
-        raw_upload = db.query(RawUpload).filter(RawUpload.id == upload_id).first()
-        if not raw_upload or not raw_upload.s3_url:
-            return
-        
-        raw_upload.status = UploadStatus.processing
-        db.commit()
-
-        # 1. Download from S3
-        content = download_file_from_s3(raw_upload.s3_url)
-
-        # 2. Parse to DF
-        df = _parse_to_dataframe(content, raw_upload.file_type)
-
-        # 3. Clean DF
-        df_clean = clean_dataframe(df)
-
-        # 4. Load into DuckDB
-        load_dataframe(raw_upload.company_id, df_clean)
-
-        raw_upload.status = UploadStatus.completed
-        raw_upload.row_count = len(df_clean)
-        db.commit()
-    except Exception as e:
-        logger.error(f"ETL failed for upload {upload_id}: {str(e)}")
-        db.rollback()
-        raw_upload = db.query(RawUpload).filter(RawUpload.id == upload_id).first()
-        if raw_upload:
-            raw_upload.status = UploadStatus.failed
-            raw_upload.error_message = str(e)
-            db.commit()
