@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.analytics import service
@@ -17,9 +17,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/upload")
+@router.post("/upload", status_code=202)
 async def upload_file(
     file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_hr),
 ):
@@ -72,6 +73,7 @@ def list_company_files(
         {
             "id": f.id,
             "filename": f.filename,
+            "s3_url": f.s3_url,  
             "status": f.status,
             "s3_url": f.s3_url,
             "created_at": f.created_at,

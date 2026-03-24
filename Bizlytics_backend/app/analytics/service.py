@@ -12,6 +12,15 @@ from storage.s3_service import upload_file_to_s3
 logger = logging.getLogger(__name__)
 
 
+import requests
+
+def download_file_from_s3(file_url: str) -> bytes:
+    response = requests.get(file_url)
+    if response.status_code != 200:
+        raise Exception("Failed to download file from S3")
+    return response.content
+
+
 def _parse_to_dataframe(content: bytes, file_type: FileType) -> pd.DataFrame:
     """
     B1: Parse raw binary content into a pandas DataFrame.
