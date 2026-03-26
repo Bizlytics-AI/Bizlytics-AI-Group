@@ -1,5 +1,21 @@
-import logging
+# =========================================================================
+# BIZLYTICS SAAS - MAIN ENTRY POINT
+# =========================================================================
+# This is the heart of the backend. It initializes the FastAPI server,
+# registers the multi-tenant middleware, and plugs in all the different
+# features (Auth, Admin, Analytics, and Tenant management).
+
+# =========================================================================
+# BIZLYTICS ANALYTICS ENGINE (DuckDB)
+# =========================================================================
+# This module handles the high-speed analytical data storage.
+# Unlike Postgres (which holds users), DuckDB holds the raw CSV/Excel numbers.
+# It is designed to be completely isolated by company_id.
+
+import threading
 import traceback
+
+import logging
 
 from fastapi import FastAPI,Request,Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -66,8 +82,7 @@ app.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
 app.include_router(tenant_router, prefix="/tenant", tags=["Tenant"])
 
 @app.get("/")
-# def root():
-#     return {"message": "Bizlytics API Running"}
+
 async def root(request: Request, x_tenant_id: str = Header(default="default")):
     return {
         "message": "Bizlytics API Running",

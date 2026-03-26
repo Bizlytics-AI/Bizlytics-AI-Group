@@ -30,14 +30,19 @@ logger = logging.getLogger(__name__)
 # ============================================
 
 
+# =========================================================================
+# SAAS HR REGISTRATION (Sub-User Creation)
+# =========================================================================
 def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
     """
-    Register HR account with status=pending. Company must approve before HR can login.
+    1. SCOPING: Look up which company (tenant) this HR wants to join.
+    2. AUTH: Create a global login record in 'public.users'.
+    3. TENANT STORAGE: Switch database scope to the company's private schema
+       and create the detailed HR profile inside it.
     """
     data.email = data.email.lower().strip()
     data.company_email = data.company_email.lower().strip()
 
-    # Check if HR email already registered in PUBLIC.users
     existing_user = repo.get_user_by_email(db, data.email)
 
     if existing_user:
@@ -46,14 +51,12 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
             detail="An account with this email already exists.",
         )
 
-    # Verify company exists and is approved
+    # Security: Ensure the target company exists and is approved
     company = repo.get_company_by_email(db, data.company_email)
     if not company:
         raise HTTPException(
             status_code=404, detail="Company not found with this email."
         )
-
-    # from app.auth.models import CompanyStatus
 
     if company.status != CompanyStatus.approved:
         raise HTTPException(
@@ -64,30 +67,25 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
     try:
         hashed = hash_password(data.password)
 
-        # Create user record (role=hr)
+        # CREATE GLOBAL ACCOUNT (For Login)
         repo.create_user(
             db=db,
             email=data.email,
             password_hash=hashed,
             role=UserRole.hr,
-            schema_name=company.schema_name,
+            schema_name=company.schema_name, # Critical: Link user to their company's schema
         )
 
-        # Switch schema to the company's schema for HR creation
+        # CREATE TENANT-SPECIFIC ACCOUNT (Inside the company room)
+        # Note: We physically switch the Postgres scope to the company's schema here.
         from sqlalchemy import text
         db.execute(text(f"SET search_path TO {company.schema_name}, public"))
         
-        # Create HR account in the tenant schema
         repo.create_hr_account(
             db=db, email=data.email, password_hash=hashed,
         )
 
         db.commit()
-        logger.info(
-            "HR registration request submitted: %s -> company %s",
-            data.email,
-            data.company_email,
-        )
         return MessageResponse(
             message="Registration submitted! Your account is pending company approval."
         )
@@ -313,9 +311,15 @@ def logout_user(db: Session, user_id: int) -> MessageResponse:
 # ============================================
 
 
+# =========================================================================
+# SAAS COMPANY REGISTRATION (Tenant Creation)
+# =========================================================================
 def register_company(db: Session, data: CompanyRegisterRequest) -> MessageResponse:
     """
-    Register a new company. Creates tenant schema for multi-tenant isolation.
+    1. VALIDATION: Ensure email is unique in the entire SaaS platform.
+    2. SCHEMA GENERATION: Create a unique 'schema_name' based on the company name.
+    3. INFRASTRUCTURE: Physically create the isolated PostgreSQL schema for this tenant.
+    4. USER PROVISIONING: Create the first 'Company Admin' user.
     """
     data.company_email = data.company_email.lower().strip()
 
@@ -333,12 +337,14 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> MessageRespon
             detail="A user with this email already exists",
         )
 
+    # Convert "Apple Inc" to "company_apple_inc"
     schema_name = "company_" + re.sub(
         r"[^a-z0-9]+", "_", data.company_name.lower()
     ).strip("_")
     hashed = hash_password(data.password)
 
     try:
+        # STEP 1: Save metadata to 'public.companies'
         repo.create_company(
             db=db,
             company_name=data.company_name,
@@ -346,6 +352,7 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> MessageRespon
             schema_name=schema_name,
         )
 
+        # STEP 2: Create the user in 'public.users'
         repo.create_user(
             db=db,
             email=data.company_email,
@@ -354,6 +361,7 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> MessageRespon
             schema_name=schema_name,
         )
 
+        # STEP 3: Create the real SQL Schema database (DDL)
         create_tenant_schema(db, schema_name)
 
         db.commit()

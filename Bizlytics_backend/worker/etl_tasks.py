@@ -25,7 +25,7 @@ def process_etl(self, upload_id: int, company_id: int):
     start_time = time.time()
     
     try:
-        # 1. Fetch the actual schema name from public.companies
+        # 1. SCOPING: Identify which tenant's schema we must use
         company = db.query(Company).filter(Company.id == company_id).first()
         if not company:
             logger.error(f"Company {company_id} not found in public.companies")
@@ -34,47 +34,43 @@ def process_etl(self, upload_id: int, company_id: int):
         schema_name = company.schema_name
         logger.info(f"Processing ETL for company: {company.company_name} (Schema: {schema_name})")
         
-        # 2. Set Tenant Schema Scope for this session
+        # 2. ISOLATION: Explicitly switch Postgres to this company's private schema
+        # This ensures all DB writes (like upload status) go to the right place.
         db.execute(text(f"SET search_path TO {schema_name}, public"))
         
-        # 2. Get Upload Record
+        # 3. DATA RETRIEVAL
         upload = db.query(RawUpload).filter(RawUpload.id == upload_id).first()
         if not upload:
             logger.error(f"Upload {upload_id} not found")
             return
             
-        # Update Status to processing
         upload.status = UploadStatus.processing
         db.commit()
         
-        # 3. Download File from S3
+        # 4. DATA PIPELINE (S3 -> Pandas -> DuckDB)
         logger.info(f"Downloading file for upload {upload_id}")
         content = download_file_from_s3(upload.s3_url)
         
-        # 4. Parse to Dataframe
         df_raw = _parse_to_dataframe(content, upload.file_type)
-        
-        # 5. Clean Dataframe
         df_clean = clean_dataframe(df_raw)
         
-        # 6. Classify Columns (Mapping)
+        # 5. METADATA: Classify and save column mapping
         mapping = classify_columns(df_clean.columns.tolist())
-        
-        # 7. Update Metadata in Postgres
         upload.column_count = len(df_clean.columns)
         upload.columns_metadata = json.dumps(df_clean.columns.tolist())
         upload.column_mapping = json.dumps(mapping)
         db.commit()
         
-        # 8. Load into DuckDB
+        # 6. STORAGE: Load cleaned data into isolated DuckDB table
+        # Note: We use the numeric company_id for the DuckDB filename for stability.
         logger.info(f"Loading {len(df_clean)} rows into DuckDB")
         load_dataframe(company_id, df_clean)
         
-        # 9. Run Aggregations
+        # 7. AGGREGATION: Pre-calculate analytical metrics for the frontend
         logger.info(f"Running aggregations for company {company_id}")
         run_aggregations(company_id)
         
-        # 10. Finalize Status
+        # 8. FINALIZE
         upload.status = UploadStatus.completed
         upload.row_count = len(df_clean)
         db.commit()

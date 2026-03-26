@@ -20,7 +20,7 @@ Currently, tenant routing is achieved via the `x-tenant-id` HTTP header.
 
 ---
 
-## 🚀 4. Future Implementation Plan: Subdomain Routing
+##  4. Future Implementation Plan: Subdomain Routing
 As the platform scales, relying on the `x-tenant-id` header will be replaced by a more robust **Subdomain Routing Strategy** (e.g., `apple.bizlytics.ai`).
 
 ### Why upgrade?
