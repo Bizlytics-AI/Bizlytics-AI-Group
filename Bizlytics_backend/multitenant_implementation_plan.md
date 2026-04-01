@@ -37,11 +37,11 @@ Data is partitioned based on the sensitivity and scope of the information.
 Contains tables shared across the entire application:
 - `users`: Universal login identities (email, password_hash, role, and assigned `schema_name`).
 - `companies`: Master list of registered companies and their approval statuses.
-- `hr_accounts`: Authorization metadata linking users to specific companies.
 - `refresh_tokens`: Global session management.
 
 ### Tenant Schema (Isolated Business Data)
 Contains tables unique to a specific company:
+- `hr_accounts`: Storage for the metadata and approval status of HR users assigned to the company.
 - `raw_uploads`: Storage for company-specific documents (CSV, XLSX, JSON) uploaded by HR users.
 - **Business Logic Tables**: All future company-specific modules (analytics, reporting, etc.) will be created here.
 
@@ -52,7 +52,8 @@ Contains tables unique to a specific company:
 The security model ensures that users only access the schema assigned to them during registration.
 
 1.  **Login**: The user provides credentials which are verified against `public.users`.
-2.  **JWT Issue**: A successful login returns a token containing the user's `schema_name`.
+2.  **Status Check**: For HR roles, the system identifies the assigned `schema_name` from the user record, performs a temporary schema switch, and verifies the approval status in the tenant's `hr_accounts` table.
+3.  **JWT Issue**: A successful login returns a token containing the user's `schema_name`.
 3.  **Authorization**: The `require_hr` and `require_company` dependencies verify that the authenticated user has permission to operate within the tenant schema requested in the `X-Tenant-ID` header.
 
 ---

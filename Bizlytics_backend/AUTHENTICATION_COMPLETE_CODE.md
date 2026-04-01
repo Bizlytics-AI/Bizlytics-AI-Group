@@ -323,10 +323,10 @@ from app.auth.models import (
     CompanyStatus,
     User,
     UserRole,
-    HRAccount,
     OTPVerification,
     RefreshToken,
 )
+from app.auth.tenant_models import HRAccount
 
 
 # ============================================
@@ -375,12 +375,11 @@ def create_user(db: Session, email: str, password_hash: str, role: UserRole, sch
 # HR Account Operations (Used by Developer A)
 # ============================================
 
-def create_hr_account(db: Session, company_id: int, email: str, password_hash: str) -> HRAccount:
+def create_hr_account(db: Session, email: str, password_hash: str) -> HRAccount:
     hr = HRAccount(
-        company_id=company_id,
         email=email,
         password_hash=password_hash,
-        otp_verified=False,
+        status="pending"
     )
     db.add(hr)
     db.commit()
@@ -659,7 +658,8 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.auth import repository as repo
-from app.auth.models import UserRole, HRAccount
+from app.auth.models import UserRole
+from app.auth.tenant_models import HRAccount
 from app.auth.schemas import (
     CompanyRegisterRequest,
     HRRegisterRequest,
@@ -715,7 +715,6 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
     # Create HR account
     repo.create_hr_account(
         db=db,
-        company_id=company.id,
         email=data.email,
         password_hash=hashed,
     )

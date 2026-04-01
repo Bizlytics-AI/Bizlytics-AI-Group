@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.analytics import service
 from app.auth.dependencies import require_hr
-from app.auth.models import HRAccount, User
+from app.auth.models import User, Company
+from app.auth.tenant_models import HRAccount
 from app.database import get_db
 from storage.s3_service import upload_file_to_s3  
 
@@ -24,15 +25,14 @@ async def upload_file(
     """
     Upload file → S3 → Save metadata → Trigger ETL
     """
-
-    # Get HR company
-    hr_account = (
-        db.query(HRAccount).filter(HRAccount.email == current_user.email).first()
+    # Find the numeric company_id from the public.companies table
+    company = (
+        db.query(Company).filter(Company.schema_name == current_user.schema_name).first()
     )
-    if not hr_account:
-        raise HTTPException(status_code=404, detail="HR account not found")
-
-    company_id = hr_account.company_id
+    if not company:
+        raise HTTPException(status_code=404, detail="Company metadata not found")
+    
+    company_id = company.id
 
     #  Upload to S3
     file_url = upload_file_to_s3(
@@ -71,18 +71,20 @@ def list_company_files(
     """
     List all uploaded files
     """
-
-    hr_account = (
-        db.query(HRAccount).filter(HRAccount.email == current_user.email).first()
+    # Find the numeric company_id from the public.companies table
+    company = (
+        db.query(Company).filter(Company.schema_name == current_user.schema_name).first()
     )
-    if not hr_account:
-        raise HTTPException(status_code=404, detail="HR account not found")
+    if not company:
+        raise HTTPException(status_code=404, detail="Company metadata not found")
+
+    company_id = company.id
 
     from app.analytics.models import RawUpload
 
     files = (
         db.query(RawUpload)
-        .filter(RawUpload.company_id == hr_account.company_id)
+        .filter(RawUpload.company_id == company_id)
         .order_by(RawUpload.created_at.desc())
         .all()
     )

@@ -7,8 +7,9 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.auth import repository as repo
-from app.auth.models import Company, HRAccount, HRStatus, UserRole ,User
+from app.auth.models import Company, UserRole, User
 from app.auth.models import CompanyStatus
+from app.auth.tenant_models import HRAccount, HRStatus
 from app.auth.schemas import (CompanyRegisterRequest, HRRegisterRequest,
                               LoginRequest, MessageResponse,
                               RefreshTokenRequest, TokenResponse,
@@ -36,11 +37,10 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
     data.email = data.email.lower().strip()
     data.company_email = data.company_email.lower().strip()
 
-    # Check if HR email already registered
+    # Check if HR email already registered in PUBLIC.users
     existing_user = repo.get_user_by_email(db, data.email)
-    existing_hr = db.query(HRAccount).filter(HRAccount.email == data.email).first()
 
-    if existing_user or existing_hr:
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="An account with this email already exists.",
@@ -73,9 +73,13 @@ def register_hr(db: Session, data: HRRegisterRequest) -> MessageResponse:
             schema_name=company.schema_name,
         )
 
-        # Create HR account (status=pending)
+        # Switch schema to the company's schema for HR creation
+        from sqlalchemy import text
+        db.execute(text(f"SET search_path TO {company.schema_name}, public"))
+        
+        # Create HR account in the tenant schema
         repo.create_hr_account(
-            db=db, company_id=company.id, email=data.email, password_hash=hashed,
+            db=db, email=data.email, password_hash=hashed,
         )
 
         db.commit()
@@ -107,9 +111,7 @@ def get_pending_hrs(db: Session, company_id: int) -> List[dict]:
     """Get all pending HR registrations for a company."""
     hrs = (
         db.query(HRAccount)
-        .filter(
-            HRAccount.company_id == company_id, HRAccount.status == HRStatus.pending
-        )
+        .filter(HRAccount.status == HRStatus.pending)
         .all()
     )
     return [
@@ -125,11 +127,9 @@ def get_pending_hrs(db: Session, company_id: int) -> List[dict]:
 
 def approve_hr(db: Session, company_id: int, hr_id: int) -> MessageResponse:
     """Approve a pending HR registration."""
-    hr = (
-        db.query(HRAccount)
-        .filter(HRAccount.id == hr_id, HRAccount.company_id == company_id)
-        .first()
-    )
+    # Note: Middleware has already switched to the correct tenant schema
+    hr = db.query(HRAccount).filter(HRAccount.id == hr_id).first()
+    
     if not hr:
         raise HTTPException(status_code=404, detail="HR account not found")
 
@@ -148,11 +148,9 @@ def approve_hr(db: Session, company_id: int, hr_id: int) -> MessageResponse:
 
 def reject_hr(db: Session, company_id: int, hr_id: int) -> MessageResponse:
     """Reject a pending HR registration."""
-    hr = (
-        db.query(HRAccount)
-        .filter(HRAccount.id == hr_id, HRAccount.company_id == company_id)
-        .first()
-    )
+    # Note: Middleware has already switched to the correct tenant schema
+    hr = db.query(HRAccount).filter(HRAccount.id == hr_id).first()
+
     if not hr:
         raise HTTPException(status_code=404, detail="HR account not found")
 
@@ -190,20 +188,27 @@ def login_user(db: Session, data: LoginRequest) -> TokenResponse:
             detail="Invalid email or password",
         )
 
-    # If HR, check company approval status
+    # If HR, check company approval status in their assigned schema
     if user.role == UserRole.hr:
-        hr_account = db.query(HRAccount).filter(HRAccount.email == user.email).first()
-        if hr_account:
-            if hr_account.status == HRStatus.pending:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Your HR registration is pending company approval.",
-                )
-            elif hr_account.status == HRStatus.rejected:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Your HR registration was rejected by the company.",
-                )
+        if user.schema_name:
+            from sqlalchemy import text
+            db.execute(text(f"SET search_path TO {user.schema_name}, public"))
+            
+            hr_account = db.query(HRAccount).filter(HRAccount.email == user.email).first()
+            if hr_account:
+                if hr_account.status == HRStatus.pending:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Your HR registration is pending company approval.",
+                    )
+                elif hr_account.status == HRStatus.rejected:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Your HR registration was rejected by the company.",
+                    )
+            
+            # Reset search_path to public for safety (though session usually ends)
+            db.execute(text("SET search_path TO public"))
 
     # If Company, check if approved by Admin
     if user.role == UserRole.company:
@@ -350,18 +355,6 @@ def register_company(db: Session, data: CompanyRegisterRequest) -> MessageRespon
         )
 
         create_tenant_schema(db, schema_name)
-        
-        # Switch to the new schema and create tenant tables properly
-        from app.database import engine
-        from app.tenant.models import TenantBase
-        from app.analytics.models import RawUpload
-        from app.auth.tenant_models import HRAccount # Added
-        from sqlalchemy import text
-        
-        with engine.connect() as connection:
-            connection.execute(text(f"SET search_path TO {schema_name}"))
-            TenantBase.metadata.create_all(bind=connection)
-            connection.commit()
 
         db.commit()
         return MessageResponse(
