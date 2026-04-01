@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.analytics import service
@@ -8,20 +8,22 @@ from app.auth.dependencies import require_hr
 from app.auth.models import User, Company
 from app.auth.tenant_models import HRAccount
 from app.database import get_db
+from storage.s3_service import upload_file_to_s3  
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.post("/upload")
+@router.post("/upload", status_code=202)
 async def upload_file(
     file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_hr),
 ):
     """
-    Upload a file and save it to PostgreSQL.
+    Upload file → S3 → Save metadata → Trigger ETL
     """
     # Find the numeric company_id from the public.companies table
     company = (
@@ -32,13 +34,33 @@ async def upload_file(
     
     company_id = company.id
 
-    # Save the file to Postgres (A4)
-    raw_upload = await service.save_raw_file(db, file, company_id)
+    #  Upload to S3
+    file_url = upload_file_to_s3(
+        file.file,
+        file.filename,
+        file.content_type
+    )
+
+    if not file_url:
+        raise HTTPException(status_code=500, detail="Failed to upload to S3")
+
+    # Save metadata only (NO BLOB)
+    raw_upload = service.save_raw_file(
+        db=db,
+        file_url=file_url,
+        filename=file.filename,
+        company_id=company_id
+    )
+
+    #  Trigger ETL (background)
+    if background_tasks:
+        background_tasks.add_task(service.process_etl, raw_upload.id, db)
 
     return {
-        "message": f"File '{file.filename}' uploaded and saved to database.",
+        "message": f"File '{file.filename}' uploaded successfully",
         "upload_id": raw_upload.id,
         "status": raw_upload.status,
+        "file_url": file_url
     }
 
 
@@ -47,7 +69,7 @@ def list_company_files(
     db: Session = Depends(get_db), current_user: User = Depends(require_hr)
 ):
     """
-    List all uploaded files for the HR's company.
+    List all uploaded files
     """
     # Find the numeric company_id from the public.companies table
     company = (
@@ -71,6 +93,7 @@ def list_company_files(
         {
             "id": f.id,
             "filename": f.filename,
+            "s3_url": f.s3_url,  
             "status": f.status,
             "created_at": f.created_at,
         }
